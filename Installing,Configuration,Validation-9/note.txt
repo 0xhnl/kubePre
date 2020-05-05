@@ -1,0 +1,262 @@
+Designing a kubernetes cluster
+
+Purpose
+-education (minkikube, single node cluster with kubeadm/GCP/AWS)
+-development and testing (Master and multiple worker, using kubeadm tool or on GCP, AWS, AKS)
+-hosting production applications (HA multinode cluster with multiple master nodes)
+cloud or onPrem? (GKE or GCP, Kops for AWS, AKS for Azure, use kubeadm)
+-storage
+ high performance - ssd backed storage
+ multiple concurrent connections - network based storage
+ persistent shared volumes for shared access across multiple PODs.
+ Label nodes with specific disk types.
+ Used Node Selectors to assign applications to nodes with specific disk types.
+Workloads
+-How many?
+-what kind?
+ Web
+ Big Data/Analytics
+-Applications Resource requirements
+ CPU intensive
+ Memory intensive
+-Traffic
+ Heavy Traffic
+ Burst traffic
+
+
+turnkey solutions
+ openshift
+ solutions
+ vmware cloud pks
+ vagrant
+hosted solution
+ google container engine  (GKE)
+ openshift online 
+ azure kubernetes service
+ amazon elastic container service for kubernetes (EKS)
+
+https://kubernetes.io/docs/concepts/cluster-administration/networking/#how-to-implement-the-kubernetes-networking-model
+https://www.objectif-libre.com/en/blog/2018/07/05/k8s-network-solutions-comparison/
+
+==================================================================
+
+HA kubernetes cluster 
+etcd implements distributed consensus using RAFT protocol
+
+quorum = n/2+1 
+quorum is number of nodes
+
+quorum of 3=3/2+1 = 1.5 ~= 2
+
+
+wget -q --https-only "https://github.com/coreos/etcd/releases/download/v3.3.9/etcd-v3.3.9-linux-amd64.tar.gz"
+tar -xvf etcd-v3.3.9-linux-amd64.tar.gz
+mv etcd-v3.3.9-linux-amd64/etcd* /usr/local/bin/
+mkdir -p /etc/etcd /var/lib/etcd
+cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/
+
+export ETCDCTL_API=3
+etcdctl put name john
+etcdctl get / --prefix --keys-only
+
+demo
+git clone https://github.com/mmumshad/kubernetes-the-hard-way.git
+install vagrant
+
+https://github.com/kelseyhightower/kubernetes-the-hard-way
+
+
+
+
+==========================================================================
+
+cd kubernetes-the-hard-way
+vargant.exe up
+now we have five nodes. 2master nodes, 2worker nodes and 1 load balancer.
+
+master1 - 192.168.5.11
+master2 - 192.168.5.12
+master3 - 192.168.5.21
+master4 - 192.168.5.22
+master5 - 192.168.5.30
+username - vargant:privatekey
+=======================================================================
+
+install client tools
+
+master1 ssh-keygen
+master1 ls.ssh && cat .ssh/id_rsa.pub
+master1 copy the sshkey
+master2 cat >> ~/.ssh/authorized_keys <<EOF
+         >ssh key
+         > EOF
+master1 install kubectl
+        wget https://storage.googleapis.com/kubernetes-release/release/v1.13.0/bin/linux/amd64/kubectl
+        chmod +x kubectl 
+        sudo mv kubectl /usr/local/bin/
+        kubectl version --client
+
+=========================================================================
+
+securing cluster (install certificate)
+
+master
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/04-certificate-authority.md
+
+=========================================================================
+
+generating kubeconfig file for auth
+
+master
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/05-kubernetes-configuration-files.md
+
+============================================================================
+
+generating the data encryption config and key
+
+master
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/06-data-encryption-keys.md
+
+==================================================================================
+
+install kubernetes release binaries
+
+go to the kubernets release github page and download kubernetes.tar.gz
+tar -xzcf kubernetes.tar.gz
+cd kubernetes;ls
+cluster/get-kube-binaries.sh
+cd server; tar -xzvf kubernetes-server-linux-amd64.tar.gz
+ls kubernetes/server/bin
+
+================================================================================
+
+install etcd cluster (control plane)
+
+install master1, master2
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/07-bootstrapping-etcd.md 	
+
+view echo $INTERNAL_IP
+     echo $ETCD_NAME
+     cat /etc/systemd/system/etcd.service
+
+========================================================================================
+
+install control plane and load balancer
+master1 and master2 (end at kubectl get componentstatuses --kubeconfig admin.kubeconfig)
+load balancer (start apt)
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/08-bootstrapping-kubernetes-controllers.md
+
+=============================================================================
+
+install worker node component
+
+worker node1
+1.generate CERTs for worker-1
+2.configure kubelet for worker-1
+3.renew certificates
+4.kube proxy
+
+worker node2
+1. to create and configure certificates by itself
+2. configure kubelet for worker-2
+3. to renew certificate by itself
+4. configure kube proxy
+
+at worker 1
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/09-bootstrapping-kubernetes-workers.md
+
+
+==================================================================================
+
+
+1. crete bootstrap token and associate it to group system:bootstrappers
+
+worker2 (end sudo mv ca.crt /var/lib/kubernetes)
+master (step 3)
+woker2 (end until)
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/09-bootstrapping-kubernetes-workers.md
+
+===================================================================================
+
+confinguration kubectl for remote access
+
+master1
+kubectl config
+cat .kube/config
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/11-configuring-kubectl.md
+
+==========================================================================================
+
+network provision
+
+kubectl get nodes			//node1 is error
+kubectl descibe node node1
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/12-configure-pod-networking.md
+
+==============================================================================================
+
+kubeapi to kubelet connectivity
+
+kubectl get nodes
+kubectl get pods -n kube-system
+kubectl get pods -n kube-system -o wide
+<all ok>
+kubectl logs weave-net.. -n kube-system		//error
+
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/13-kube-apiserver-to-kubelet.md
+
+============================================================
+
+deploy coredns
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/14-dns-addon.md
+
+==============================================================
+
+test manual
+kubectl get nodes
+kubectl get pods
+kubectl get pods -n kube-system
+service kube-apiserver status
+service kube-controller-manager status
+service kube-scheduler status
+service kubelet status	
+service kube-proxy status
+
+kubectl run nginx
+kubectl get pods
+kubectl scale --replicas=3 deploy/nginx
+kubectl get pods
+
+kubectl expose deployment nginx --port=80 --type=NodePort
+kubectl get service
+curl http://worker-1:31850
+
+build -> deploy -> test -> cleanup
+
+sonobuoy
+
+==============================================================
+
+
+end to end test ( run and analyze)
+
+go get -u k8s.io/test-infra/kubetest
+kubetest --extract=v1.11.3
+cd kubernetes
+export KUBE_MASTER_IP="192.168.26.10:6443"
+export KUBE_MASTER=kubemaster
+kubetest --test --provider=skeleton > testout.txt
+
+kubetest --test --provide=skeleton --test_args="--ginkgo.focus=Secrets" > testout.txt
+kubetest --test --provide=skeleton --test_args="--ginkgo.focus=\[Conformance\]" > testout.txt
+
+cat testout.txt\
+=======================================================
+
+
+smoke test
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/15-smoke-test.md
+
+=======================================================================
+
+run end to end tests

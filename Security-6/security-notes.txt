@@ -1,0 +1,703 @@
+secure host
+
+root access disabled
+password based authentication
+only ssh based authentication\
+
+secure kubernetes
+api-server
+
+two types of decisions
+-who can access the cluster
+-what can they do
+
+Authentication
+who can access?
+1.files - username and passwords
+2.files - username and tokens
+3.certificates
+4.externl authentication providers - LDAP
+5.service accounts
+
+Authorization
+1. RBAC authorization (role based)
+2. ABAC authorization (attribute based)
+3. node authorization
+4. webhook mode
+
+all componets are communicate with TLS certificates (components such as kubecontroller, etcd, kubelet, kubeproxy, kube scheduler)
+
+======================================================================================
+
+Authetication
+
+two types of accounts
+1. user (admin/Developers)
+2. Service Account (Bots)
+-kubernets does not manage user accounts natively it relies on an external source like a file with user details or certificates or a third party identity service 
+like LDAP to manage these users.
+Create user -> kubectl create serviceaccount sa1
+view user ->   kubectl list service account
+
+-all user access is managed by the API server.
+
+KubeAPI server Auth mechanisms
+1. Static Password file
+2. static token file
+3. certificates
+4. identity services (third party protocols like LDAP)
+
+1.static password file
+example
+-user-details.csv file has three columns password, username and userID.
+-we then pass the file name as an option to the kube-api server. Remember the kube-api server service '--basic-auth-file=user-details.csv' in kube-apiserver.service.
+
+authenticate user
+curl -v -k https://master-node-ip:6443/api/v1/pods -u "user1:password123"
+
+2. static token file
+--token-auth-file=user-details.csv
+curl -v -k https://master-node-ip:6443/api/v1/pods --header "Authorization: Bearer KpjasfdfJDF45DFK9df"
+
+do not recommended all this file because these are in clear text. not server
+
+==============================================================================================================================
+
+Basic TLS
+-when the user communicate with web server. The TLS certificate can make a secure connections
+
+openssl genrsa -out my-bank.key 1024
+openssl rsa -in my-bank.key -pubout > mybank.pem
+
+certificate public key
+1. server.crt
+2. server.pem
+3. client.crt
+4. client.pem
+
+private key
+1. server.key
+2. server-key.pem
+3. client.key
+4. client-key.pem
+
+==========================================================
+
+TLS in kubernetes
+
+In the infrastructure. Three types
+
+Root Certificates (Example symatec)
+1. public lock(key) and private key
+
+server Certificates 
+1. public lock(key) and private key
+
+client Certificates 
+1. public lock(key) and private key
+
+-the cluster to user server certificates and all clients to use client certificates to verify who they are
+
+server certificates in server
+kube-apiserver - public key and private key
+etcd server - public key and private key
+kubelet - public key and private key
+
+client certificates for clients
+-when admin to access the kube-api server, he need admin.crt and admin.key
+-the scheduler talks to the kube-api server to look for pods that require scheduling and then get the api server to schedule the pods on the right worker nodes with scheduler.crt and scheduler.key.
+-the kube-controller manager is a client that access that kubeapi server with controller-manager.crt and controller.key
+- kubeproxy use kube-proxy.crt and kube-proxy.key to access the kubeapi server
+- and then kube api server communicate the etcd server. the etcd server generate apiserver-etcd.crt and apiserver-etcd.key
+- the kubeapi server communicate to the kubelet server across the etcd server. so the etcd generate apiserver-kubelet.crt and api-kubelet.key again
+
+we need Certificate Authority(CA) -> ca.crt and ca.key
+
+=================================================================
+
+creating certificate
+
+different types of tool -> easyrsa, openssl, cfssl, etc..
+
+CA
+first create the publickey (key)
+-> openssl genrsa -out ca.key 2048
+
+and then create kubernetes signin request certificate (csr)
+-> openssl req -new -key ca.key -subj "/CN=KUBERNETES-CA" -out ca.csr
+
+and then create sign in certificate (crt)
+-> openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt
+
+First step complete and ca become root certificate and then
+
+AdminUser (client)
+generate key
+-> generate key -out admin.key 2048
+
+sign in request
+-> openssl req -new -key admin.key -subj "/CN=kube-admin" -out admin.csr (basic user)
+-> openssl req -new -key admin.key -subj "/CN=kube-admin/O=system:master" -out admin.csr (admin user)
+
+-> curl https://kube-apiserver:6443/api/v1/pods --key admin.key --cert admin.crt --cacert ca.crt
+
+kubeapi-server
+-> openssl req -new-key apiserver.key -subj "/CN=kube-appiserver" -out apiserver.csr --config openssl.cnf
+-> openssl x509 -req -in apiserver.csr -CA ca.crt -CAkey ca.key -out apiserver.crt
+
+=============================================================================================================
+
+view certificate detail
+
+the hard way = cat /etc/systemd/system/kube-apisever.service
+kubeadm = cat /etc/kubernetes/manifests/kube-apiserver.yml
+
+decode and view certificate file
+openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout
+
+inspect service logs
+-> journalctl -u etcd.service -l
+-> kubectl logs etcd-master
+
+github link
+https://github.com/mmumshad/kubernetes-the-hard-way/tree/master/toolsx	
+
+Identify the Certificate file used to authenticate kube-apiserver as a client to ETCD Server
+Ans: Run the command 'cat /etc/kubernetes/manifests/kube-apiserver.yaml' and look for etcd configurations
+
+Look for kubelet-client-key option in the file /etc/kubernetes/manifests/kube-apiserver.yaml
+Ans: Look for kubelet-client-key option in the file /etc/kubernetes/manifests/kube-apiserver.yaml
+
+Identify the ETCD Server Certificate used to host ETCD server
+Ans: Look for cert file option in the file /etc/kubernetes/manifests/etcd.yaml
+
+Identify the ETCD Server CA Root Certificate used to serve ETCD Server
+ETCD can have its own CA. So this may be a different CA certificate than the one used by kube-api server.
+Ans: Look for CA Certificate in file /etc/kubernetes/manifests/etcd.yaml
+
+What is the Common Name (CN) configured on the Kube API Server Certificate?
+Ans: OpenSSL Syntax: openssl x509 -in file-path.crt -text -noout
+                     openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text
+
+What is the name of the CA who issued the Kube API Server Certificate?
+Ans: Run the command openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text and look for issuer
+
+Which of the below alternate names is not configured on the Kube API Server Certificate?
+Ans: Run the command openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text and look at Alternative Names
+
+What is the Common Name (CN) configured on the ETCD Server certificate?
+Ans: Run the command openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -text and look for Subject CN.
+
+How long, from the issued date, is the Kube-API Server Certificate valid for?
+File: /etc/kubernetes/pki/apiserver.crt
+Ans: Run the command openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text and check on the Expiry date.
+
+How long, from the issued date, is the Root CA Certificate valid for?
+File: /etc/kubernetes/pki/ca.crt
+Ans: Run the command 'openssl x509 -in /etc/kubernetes/pki/ca.crt -text' and look for validity
+
+Kubectl suddenly stops responding to your commands. Check it out! Someone recently modified the /etc/kubernetes/manifests/etcd.yaml file
+You are asked to investigate and fix the issue. Once you fix the issue wait for sometime for kubectl to respond. Check the logs of the ETCD container.
+ANs: Inspect the --cert-file option in the manifests file.
+
+The kube-api server stops responding one day when it tries to connect to ETCD server.
+Inspect and fix the issue. If the certificate is expired, sign a new certificate by the CA and configure it to be used by the kube-api server
+Ans: The existing certificate is expired. Generated a new one. Answer at /var/answers/sign-new-cert.txt
+openssl x509 -req -in /etc/kubernetes/pki/apiserver-etcd-client.csr -CA /etc/kubernetes/pki/etcd/ca.crt -CAkey /etc/kubernetes/pki/etcd/ca.key -CAcreateserial -out /etc/kubernetes/pki/apiserver-etcd-client.crt
+
+==========================================================================================
+
+certificated api
+
+kubernetes have build in certificate api
+
+1. create CertificateSigningRequest Object
+2. review requests 
+3. approve request
+
+first user create a key
+-> openssl genrsa -out jane.key 2048
+-> openssl req -new -key jan.key -subj "/CN=jane" -out jane.csr
+-> cat jane.csr | base64 and paste in the request field in the yml file
+-> kubectl get csr
+-> kubectl certificate approve jane
+
+-> kubectl get csr jane -o yaml
+
+controller manager work -> csr-approving and csr-signing
+cat /etc/kubernetes/manifests/kube-controller-manager.yaml
+
+Create a CertificateSigningRequest object with the name akshay with the contents of the akshay.csr file
+Ans: pratice-lab-request.yaml
+
+What is the Condition of the newly created Certificate Signing Request object?
+Ans: kubectl get csr
+
+Approve the CSR Request
+Ans: kubectl certificate approve akshay
+
+Hmmm.. You are not aware of a request coming in. What groups is this CSR requesting access to?
+Check the details about the request. Preferebly in YAML.
+Ans: kubectl get csr agent-smith -o yaml
+
+That doesn't look very right. Reject that request.
+ANs: kubectl certificate deny agent-smith
+
+Let's get rid of it. Delete the new CSR object
+ANs: kubectl delete csr agent-smith
+
+============================================
+
+kubeconfig
+
+default - $HOME/.kube/config
+
+kubeconfig file has 3 sections. Clusters, Users and Contexts.
+-the clusters are the various kubernetes clusters that you need to access to. So, you have multiple clusters for development environment or testing
+environment or prod or for different organizations or on different cloud providers etc.
+-the users are the users account with which you have to access the cluster. and different privileges on different cluster.
+-contexts marry these together context define which user account will be used to access which cluster 
+
+--server my-kube-playground:6443
+--client-key admin.key
+--client-certificate admin.crt
+--certificate-authority ca.crt
+
+kubeconfig file format
+apiVersion: v1
+kind: Config
+
+clusters:
+
+contexts:
+
+users:
+
+example: kubeConfig.yml
+
+to view config file -> kubectl view config
+-> kubectl config user-context prod-user@production
+
+I would like to use the dev-user to access test-cluster-1. Set the current context to the right one so I can do that.
+Once the right context is identified, use the 'kubectl config use-context' command.
+Ans: kubectl config --kubeconfig=/root/my-kube-config use-context research
+
+We don't want to have to specify the kubeconfig file option on each command. Make the my-kube-config file the default kubeconfig.
+ANs: move my-kube-config file to .kube file and change name to config, and delete the original config file
+
+======================================================================================================================
+
+api groups
+curl https://kube-master:6443/version
+curl https://kube-master:6443/api/v1/pods
+/metrics
+/healthz
+/version
+/api		//core groups
+/apis		//named groups
+/logs
+curl http://localhost:6443 -k 		//view options
+curl http://localhost:6443 -k --key admin.key --cert admin.crt --cacert ca.crt
+
+kubectl proxy
+curl http://localhost:8001 -k
+
+kube proxy not equal kubectl proxy
+-kubectl proxy is an http proxy service created by kubectl utility to access the kube api server
+
+=====================================================================================
+
+authorization
+
+authorization mechanisms
+1. node based
+2. attribute based (ABAC) -> difficult
+3. Role Base (RBAC)
+4. Webhook
+
+two more mode
+always allow
+always deny
+
+api core
+/api/v1/
+  /namespaces
+    /events
+    /bindings
+    /configmaps
+  /pods
+    /endpoints
+    /PV
+    /secrets
+  /rc
+    /nodes
+    /PVC
+    /services
+
+======================================================
+
+roles based access control
+step
+1. create rules
+2. link with user
+
+1. example: developer-rules.yml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list","get","create","update","delete"]
+
+- apiGroups: [""]
+  resources: ["ConfigMap"]
+  verbs: ["create"]
+
+# can view pods
+# can create pods
+# can delete pods
+# can create configMaps
+
+2. link with user
+example: devuser-developer-binding.yml
+
+-> kubectl get roles
+-> kubectl get rolebindings
+-> kubectl describe role developer
+-> kubectl describe rolebinding devuser-developer-binding
+
+check access myself
+-> kubectl auth can-i create deployments
+-> kubectl auth can-i delete nodes
+
+by administrator
+-> kubectl auth can-i create deployments --as dev-user
+-> kubectl auth can-i create pods --as dev-user
+-> kubectl auth can-i create pods --as dev-user --namespace test		//with namespace
+
+check authorization mode
+-> kubectl describe pod kube-apiserver-master -n kube-system			//view the authorization-mode
+
+How many roles exist in all namespaces together?
+Ans: kubectl get roles --all-namespaces
+
+What are the resources the weave-net role in the kube-system namespce is given access to?
+Ans:  kubectl describe role weave-net -n kube-system
+
+Which account is the weave-net role assigned to it?
+Ans: kubectl describe rolebinding weave-net -n kube-system
+
+A user dev-user is created. User's details have been added to the kubeconfig file. Inspect the permissions granted to the user. Check if the user can list pods in the default namespace.
+Use the --as dev-user option with kubectl to run commands as the dev-user
+Ans: kubectl get pods --as dev-user
+
+Create the necessary roles and role bindings required for the dev-user to create, list and delete pods in the default namespace.
+Use the given spec
+Role: developer
+Role Resources: pods
+Role Actions: list
+Role Actions: create
+RoleBinding: dev-user-binding
+RoleBinding: Bound to dev-user
+Ans:
+developer-role.yml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: default
+  name: developer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "create"]
+
+
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dev-user-binding
+subjects:
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+
+Grant the dev-user permissions to create deployments in the blue namespace.
+Remember to add both groups "apps" and "extensions"
+Ans:
+dev-user-rolebinding.yml
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: blue
+  name: deploy-role
+rules:
+- apiGroups: ["apps", "extensions"]
+  resources: ["deployments"]
+  verbs: ["create"]
+
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dev-user-deploy-binding
+  namespace: blue
+subjects:
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: deploy-role
+  apiGroup: rbac.authorization.k8s.io
+
+===================================================================================================
+
+cluster roles
+
+namespaced
+ pods
+ replicasets
+ jobs
+ deployments
+ services
+ secrets
+ roles
+ rolebindings
+ configmaps
+ PVC
+
+clusterscoped
+ nodes
+ PV
+ clusterroles
+ clusterrolebindings
+ certificatesigningrequests
+ namespaces
+
+How many ClusterRoleBindings exist on the cluster?
+Ans: kubectl get clusterrolebindings | wc -l
+
+What user/groups are the cluster-admin role bound to?
+The ClusterRoleBinding for the role is with the same name.
+Ans: kubectl describe clusterrolebinding cluster-admin
+
+What level of permission does the cluster-admin role grant?
+Inspect the cluster-admin role's privileges
+Ans: kubectl describe clusterroles cluster-admin
+
+A new user michelle joined the team. She will be focusing on the nodes in the cluster. Create the required ClusterRoles and ClusterRoleBindings so she gets access to the nodes.
+The kubeconfig file has been configured with her credentials.
+Ans:
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: node-admin
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: michelle-binding
+subjects:
+- kind: User
+  name: michelle
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: node-admin
+  apiGroup: rbac.authorization.k8s.io
+
+michelle's responsibilities are growing and now she will be responsible for storage as well. Create the required ClusterRoles and ClusterRoleBindings to allow her access to Storage.
+Get the API groups and resource names from command kubectl api-resources. Use the given spec.
+ClusterRole: storage-admin
+Resource: persistentvolumes
+Resource: storageclasses
+ClusterRoleBinding: michelle-storage-admin
+ClusterRoleBinding Subject: michelle
+ClusterRoleBinding Role: storage-admin
+Ans:
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-admin
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: michelle-storage-admin
+subjects:
+- kind: User
+  name: michelle
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: storage-admin
+  apiGroup: rbac.authorization.k8s.io
+
+
+==================================================================================
+
+image security
+
+pirvate repository
+-> docker login private-registry.io
+-> docker run private-registry.io/apps/internal-app
+
+kubernets
+-> kubectl create secret docker-registry regcred \
+   --docker-server= 		\
+   --docker-username=		\
+   --docker-password=		\
+   --docker-email=
+
+
+and
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: private-registry.io/apps/internal-apps
+  imagePullSecrets:
+  - name: regcred
+
+
+We decided to use a modified version of the application from an internal private registry. Update the image of the deployment to use a new image from myprivateregistry.com:5000
+The registry is located at myprivateregistry.com:5000. Don't worry about the credentials for now. We will configure them in the upcoming steps.
+Ans: Use the kubectl edit deployment command to edit the image name to myprivateregistry.com:5000/nginx:alpine		
+
+Create a secret object with the credentials required to access the registry
+Name: private-reg-cred
+Username: dock_user
+Password: dock_password
+Server: myprivateregistry.com:5000
+Email: dock_user@myprivateregistry.com
+
+Secret: private-reg-cred
+Secret Type: docker-registry
+Secret Data
+Ans: kubectl create secret docker-registry private-reg-cred --docker-username=dock_user --docker-password=dock_pass --docker-server=myprivateregistry.com:5000 --docker-email=dock_user@myprivateregistry.com
+
+
+=====================================================================================================================
+
+security context
+
+container security 
+-> docker run --user=1001 ubuntu sleep 3600
+-> docker run -cap-add MAC_ADMIN ubuntu
+
+kubernetes
+Note: capalities are only supported at the container level and not  at the POD level
+
+================================================================================================
+
+network policities
+two types of traffic
+1. ingress
+2. egress
+-a web server the incoming traffic from the users is an ingress traffic
+-the outgoing request to the app server is a egress traffic
+
+network security in kubernetes
+-kubernets is configured by default with an 'all allow' rule that allows traffic from any pod to any other pod or services
+example: network policy rule.yml
+
+solutions that support network policies:
+kube-router
+calico
+romana
+weave-net
+
+solutions not support
+flannel
+
+How many network policies do you see in the environment?
+We have deployed few web applications, services and network policies. Inspect the environment.
+ans: kubectl get networkpolicy
+
+Create a network policy to allow traffic from the 'Internal' application only to the 'payroll-service' and 'db-service'
+Use the spec given on the right. You might want to enable ingress traffic to the pod to test your rules in the UI.
+Policy Name: internal-policy
+Policy Types: Egress
+Egress Allow: payroll
+Payroll Port: 8080
+Egress Allow: mysql
+MYSQL Port: 3306
+Ans:
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      name: internal
+  policyTypes:
+  - Egress
+  - Ingress
+  ingress:
+    - {}
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          name: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+
+  - to:
+    - podSelector:
+        matchLabels:
+          name: payroll
+    ports:
+    - protocol: TCP
+      port: 8080
+
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+
+Kubectx and Kubens – Command line Utilities
+
+
+
+
+
+
+
+
+
+
+
+

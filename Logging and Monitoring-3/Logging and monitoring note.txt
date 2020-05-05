@@ -1,0 +1,44 @@
+monitoring service such as metrics server, prometheus. proprietary solutions etastic stack, datadog, dynatrace
+
+heapster was one of the original projects that enabled monitoring and analysis features for kubernetes (deprecated). Now, metric server	
+
+the metric server is only an in memory monitoring solution and does not store the metrics on the desk and as a result you cannot see historical performace data.
+
+kubernetes run an agent on node known as kubelet which is responsible for receiving instructions from the kubernetes API master server and running PODs on the nodes.
+the kubelet also contains a subcomponent known as a 'cAdvisor' or 'Container Advisor'
+-cAdvisor responsible for retrieving performance metrics from pods, and exposing them through the kubelete API to make the metrics available for the Metrics Server.
+
+for minikube (local)
+-> minikube addons enable metrics-server
+-> git clone https://github.com/kubernetes-incubator/metrics-serve
+-> kubectl create -f deploy/1.8+/
+for view -> kubectl top node		//view node
+  	    kubectl top pods		//view pods
+
+demo
+-> git clone https://github.com/kodekloudhub/kubernetes-metrics-server.git && cd kubernetes-metrics-server && kubectl create -f .
+
+=======================================================================================================================================
+
+managing applications logs
+
+logs docker
+-> docker run kodekloud/event-simulator
+-> docker run -d kodekloud/event-simulator
+-> docker logs -f <container-id>		//to see logs
+
+logs kubernetes 
+-> kodekloud/event-simulator
+-> kubectl create -f .
+-> kubectl logs -f <pod name>  		//single conainer
+
+-> kubectl create -f modified-event-simulator.yml
+-> kubectl logs -f event-simulator-pod			//see cant ee nothing
+-> kubectl logs -f event-simulator-pod event-simulator	//see logs
+
+A user is reporting issues while trying to purchase an item.
+Identify the user and the cause of the issue.
+Inspect the logs of the webapp in the POD.
+Ans: kubectl logs webapp-2 -c simple-webapp
+
+

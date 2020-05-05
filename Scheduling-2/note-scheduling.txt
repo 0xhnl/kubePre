@@ -1,0 +1,285 @@
+manual scheduling
+============================
+without schedular when we view 'kubectl get pods', the status is pending.	
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    name: nginx
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 8080
+  nodeName: node02
+
+========================================
+
+labels and selectors
+
+select
+kubectl get pods --selector app=App1
+
+We have deployed a number of PODs. They are labelled with 'tier', 'env' and 'bu'. How many PODs exist in the 'dev' environment?
+Use selectors to filter the output
+Ans: kubectl get pods --selector env=dev
+
+How many PODs are in the 'finance' business unit ('bu')?
+Ans: kubectl get pods --selector bu=finance
+ 
+How many objects are in the 'prod' environment including PODs, ReplicaSets and any other objects?
+Ans: kubectl get pods --selector env=prod
+
+Identify the POD which is 'prod', part of 'finance' BU and is a 'frontend' tier?
+Ans: kubectl get all --selector env=prod,bu=finance,tier=frontend
+
+=================================================================================
+
+taints and tolerations
+example - when the person is intolerant, the person is hit the bug and the bug run away
+          when the person is tolerant, the person do not hit the bug and the bug bit the human
+
+in kubernetes, the person is a node, the bug is a pod
+-when taints in the node, the pod cannot place in the node 
+-when we tolerations to the pod, the scheduler try to place in the node.
+
+-there are three nodes and four pods in enviroment. 1st node is taints, and the other two nodes is not taint.
+-when first pod is try to go 1st node. It cant allow and the pod is goint to the node2.
+-when 4th pod is tolerations, it can go taints node1.
+-in default, master is taint node.
+
+->kubectl taint nodes node-name key=value:taint-effect			//format
+there are three taint-effect such as 'NoSchedule,PreferNoSchedule,NoExecute'
+->kubectl taint nodes node1 app=blue:NoSchedule
+->kubectl describe node kubemaster | grep Taint				//master node is defualt taint node.
+
+Create a taint on node01 with key of 'spray', value of 'mortein' and effect of 'NoSchedule'
+Ans: kubectl taint nodes node01 spray=mortein:NoSchedule
+
+Create a new pod with the NGINX image, and Pod name as 'mosquito'
+Ans: 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mosquito
+spec:  
+  containers:
+  - image: nginx    
+    name: mosquito
+
+Create another pod named 'bee' with the NGINX image, which has a toleration set to the taint Mortein
+Ans: 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bee
+spec:  
+  containers:
+  - image: nginx    
+    name: bee
+  tolerations:
+  - key: spray
+    value: mortein    
+    effect: NoSchedule
+    operator: Equal
+
+Do you see any taints on master node?
+Ans: 'kubectl describe node master
+
+Remove the taint on master, which currently has the taint effect of NoSchedule
+Ans: kubectl taint nodes master node-role.kubernetes.io/master:NoSchedule-
+
+Which node is the POD 'mosquito' on now?
+Ans: kubectl get pods -o wide
+
+===========================================================================================
+
+nodeselector
+-we have three node1,node2,node3. Node1 have higher hardware resources and node2 and 3 have lower resources. 
+-by default, any pods go to the any node.
+-when node3 pod is big, it is not good for node3
+
+two ways to solve this problems.
+node selectors
+node affinity
+
+node selectors
+-first we create the label which node is larger.
+->kubectl label nodes <node-name> <label-key>=<label-value>	//format
+->kubectl label nodes node-1 size=large				//reality
+
+node-selector-pod.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+    - name: data-processor
+      image: data-processor
+
+  nodeSelector:
+    size: Large
+-But it is complex and it work on single. When our industy is more complex, it is not good. So, we use node affinity.
+
+node affinity
+
+NodeAffinity Types
+
+available:
+requiredDuringsSchedulingignoredDuringExecution
+preferredDuringsSchedulingIgnoredDuringExecution
+
+Planned:
+requiredDuringsSchedulingRequiredDuringExecution
+preferredDuringsSchedulingRequiredDuringExecution
+
+How many Labels exist on node node01?
+Ans: kubectl describe node node01
+
+Apply a label color=blue to node node01
+Ans: kubectl label node node01 color=blue
+
+Create a new deployment named 'blue' with the NGINX image and 6 replicas
+Ans: kubectl run blue --image=nginx --replicas=6
+
+Set Node Affinity to the deployment to place the PODs on node01 only
+Ans: bluedeployment.yml
+     kubectl get nodes -o wide
+
+Create a new deployment named 'red' with the NGINX image and 3 replicas, and ensure it gets placed on the master node only.
+Use the label - node-role.kubernetes.io/master - set on the master node.
+Ans: red-deployment.yml
+
+=====================================
+
+taints and tolerations vs node affinity
+taints and tolerations - there are three node with blue,red,green colors. there are three pods green, blue, and red. they must go their related color.
+			 but the colored pod can go 'no effect node'(other node).
+node affinity - we must label these three node blue, red and green. The pods must go their related pods
+
+we can use together this two
+
+=====================================================
+
+Resources Limit
+There are three nodes. They have a set of CPU, Memory and Disk
+By default, kubernets use for pod 0.5CPU, 256Mi.
+1Gi (Gibibyte) = 1073,741,824bytes
+1Mi (Mebibyte) = 1,1048,576bytes
+1Ki (Kibibyte) = 1024bytes
+
+A pod named 'rabbit' is deployed. Identify the CPU requirements set on the Pod
+in the current(default) namespace
+Ans: kubectl describe pod rabbit
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: elephant
+spec:
+  containers:
+  - name: elephant
+    image: polinux/stress
+    resources:
+      limits:
+        memory: "20Mi"
+
+===============================================================
+
+DaemonSet
+-Daemonset are used in the monitoring solution and logs viewer
+-kubeproxy component can be deployed as a daemon set in the cluster.		(kubeproxy use case)
+-networking solutions like weave net requires an agent to be deployed on each node in the cluster.
+->kubectl create -f daemon-set.yml
+->kubectl get daemonsets
+->kubectl describe daemonsets monitoring-daemon
+
+default behavior till v1.12
+from v1.12 - uses NodeAffinity and default scheduler
+
+How many DaemonSets are created in the cluster in all namespaces?
+Check all namespaces
+Ans: kubectl get daemonsets --all-namespaces
+
+Which of the below is a DaemonSet?
+Ans: kubectl get all --all-namespaces
+
+On how many nodes are the pods scheduled by the DaemonSet kube-proxy
+Ans: kubectl describe daemonset kube-proxy --namespace=kube-system
+
+What is the image used by the POD deployed by the weave-net DaemonSet?
+Ans: lab-daemonset.yml
+
+========================================================
+
+static POD
+/etc/kubernetes/manifests		//run without kubeapi server when we create yml file and run in this part (we can create pod only)
+-if the application crashes, the kubelet attempts to restart it.
+-if you remove a file from this directory the part is deleted automatically
+->kubectl get pods -n kube-system
+
+Static Pods vs daemon set
+static pods
+-created by kubelet
+-deploy control plane components as static pods
+
+daemonsets
+-created by kube-api server (DaemonSet Controller)
+-Deploy Monitoring Agents, Logging Agents on nodes
+
+Ignored by the Kube-Scheduler
+
+How many static pods exist in this cluster in all namespaces?
+Ans: kubectl get pods --all-namespaces
+
+On what nodes are the static pods created?
+Ans: kubectl get pods --all-namespaces -o wide
+
+Create a static pod named static-busybox that uses the busybox image and the command sleep 1000
+Ans: kubectl run --restart=Never --image=busybox static-busybox --dry-run -o yaml --command -- sleep 1000 > /etc/kubernetes/manifests/static-busybox.yaml
+
+We just created a new static pod named static-greenbox. Find it and delete it.
+Ans: Identify which node the static pod is created on, ssh to the node and delete the pod definition file. If you don't know theIP of the node, run the kubectl get nodes -o wide command and identify the IP. 
+     Then SSH to the node using that IP. For static pod manifest path look at the file on node01
+
+=====================================================================================================================
+
+multiple scheduler
+-you can write your own scheduler
+download kubescheduler
+
+kube-scheduler.service
+
+/etc/kubernetes/manifests/kube-scheduler.yaml
+-the important option 'leader elect' is used when you have multiple copies of the scheduler running on different master nodes, in a 
+high availability setup where you have multiple master nodes with the kube-scheduler process running on both of them
+
+-> kubectl create -f mycustom-scheduler.yml
+-> kubectl get pods --namespace=kube-system
+-> kubectl get events						//successfully assigned 
+-> kubectl logs my-custom-scheduler --name-space=kube-system	//view scheduler logs
+
+What is the name of the POD that deploys the default kubernetes scheduler in this environment?
+Ans: kubectl get pods --namespace=kube-system
+
+What is the image used to deploy the kubernetes scheduler?
+Inspect the kubernetes scheduler pod and identify the image
+Ans: kubectl describe pod kube-scheduler-master --namespace=kube-system
+
+Deploy an additional scheduler to the cluster following the given specification.
+Use the manifest file used by kubeadm tool. Use a different port than the one used by the current one.
+Namespace: kube-system
+Name: my-scheduler
+Status: Running
+Custom Scheduler Name
+Ans: own-scheduler-pratice.yml
+
+
+
+		
+
+

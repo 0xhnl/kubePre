@@ -1,0 +1,211 @@
+os upgrade
+-> kubectl drain node-1 		//node1 move its pods to the other node when he terminated.
+-> kubectl uncordon node-1	
+
+We need to take node01 out for maintenance. Empty the node of all applications and mark it unschedulable.
+Ans: kubectl drain node01 --ignore-daemonsets	
+
+The maintenance tasks have been completed. Configure the node to be schedulable again.
+Ans: kubectl uncordon node01
+
+Why are there no pods on node01?
+Ans: 
+
+Why are there no pods placed on the master node?
+Check the master node details
+Ans: taints
+
+Drain node02 and mark it unschedulable
+Ans: kubectl drain node02 --ignore-daemonsets --force
+
+Node03 has our critical applications. We do not want to schedule any more apps on node03. Mark node03 as unschedulable but do not remove any apps currently running on it .
+ANs: kubectl cordon node03
+
+===============================================================
+
+kubernets software version
+
+v1.11.3
+
+example
+v1    .     11        .         3
+major	  minor	              patch
+
+minor version = relese every few month with new features and functionalities
+patch version = patch are released more often with critical bug fixes. Just like many other popular applications out 
+
+first major version july2015
+the latest stable version is 1.13.0 Dec2018
+
+alpha version1.10.0 = the features are disabled by default and maybe buggy. and then
+beta release = they make their way to beta release where the code is well tested. the new features are enable by default and then stable release
+
+==========================================================
+
+cluster upgrade process
+
+when upgrade we shouldnt v1.10 to 1.13
+shoud be v1.10 -> v1.11 -> v.12 -> v1.13
+
+kubeadm
+-> kubeadm upgrade plan
+-> kubeadm upgrade apply
+
+master upgrade - when master is upgrade, you cant not deploy any application in the worker 
+worker upgrade
+1. strategy1 - all upgrade. So, any user cant access
+2. strategy2 - one node at once.
+3. strategy3 - new version with new node and move all to the new node
+
+-> apt-get upgrade -y kubeadm=1.12.0-00
+-> kubeadm upgrade apply v1.12.0
+-> apt-upgrade -y kubelet=1.12.0-00
+-> systemctl restart kubelet
+-> kubectl get nodes
+
+worker node01
+-> kubectl drain node-1		(master)
+-> apt-get upgrade -y kubeadm=1.12.0-00
+-> apt-upgrade -y kubelet=1.12.0-00
+-> kubeadm upgrade node config --kubelet-version v1.12.0
+-> systemctl restart kubelet
+-> kubectl uncordon node-1	(master)
+
+We will be upgrading the master node first. Drain the master node of workloads and mark it UnSchedulable
+Master Node: SchedulingDisabled
+Ans: kubectl drain master --ignore-daemonsets	
+
+Upgrade the master components to exact version v1.17.0
+
+
+Upgrade kubeadm tool (if not already), then the master components, and finally the kubelet. Practice referring to the kubernetes documentation page. 
+Note: While upgrading kubelet, if you hit dependency issue while running the apt-get upgrade kubelet command, use the apt install kubelet=1.17.0-00 command instead
+Ans: apt install kubeadm=1.17.0-00
+     kubeadm upgrade apply v1.17.0
+     apt install kubelet=1.17.0-00
+
+Mark the master node as "Schedulable" again
+Ans: kubectl uncordon master
+
+Next is the worker node. Drain the worker node of the workloads and mark it UnSchedulable
+Ans: kubectl drain node01 --ignore-daemonsets
+
+Upgrade the worker node to the exact version v1.17.0
+Ans: apt install kubeadm=1.17.0-00
+     apt install kubelet=1.17.0-00
+     kubeadm upgrade node
+
+Remove the restriction and mark the worker node as schedulable again.
+Ans: kubectl uncordon node01
+
+unschedule = drain node
+schedule = uncordon node01
+
+=======================================================================
+
+backup and restore method
+
+backup candidates
+
+backup resource config
+velero(apk by heptlo) - it can help in taking backups of your kubernetes cluster using the kubernetes API.
+
+backup etcd
+-> ETCDCTL_API=3 etcdctl \
+   snapshot save snapshot.db
+-> ls 
+-> ETCDCTL_API=3 etcdctl \
+   snapshot status snapshot.db
+
+================================================================================================
+
+WORKING WITH ETCDCTL
+
+
+
+etcdctl is a command line client for etcd.
+
+
+
+In all our Kubernetes Hands-on labs, the ETCD key-value database is deployed as a static pod on the master. The version used is v3.
+
+To make use of etcdctl for tasks such as back up and restore, make sure that you set the ETCDCTL_API to 3.
+
+
+
+You can do this by exporting the variable ETCDCTL_API prior to using the etcdctl client. This can be done as follows:
+
+export ETCDCTL_API=3
+
+On the Master Node:
+
+
+To see all the options for a specific sub-command, make use of the -h or --help flag.
+
+
+
+For example, if you want to take a snapshot of etcd, use:
+
+etcdctl snapshot save -h and keep a note of the mandatory global options.
+
+Since our ETCD database is TLS-Enabled, the following options are mandatory:
+
+--cacert                verify certificates of TLS-enabled secure servers using this CA bundle
+
+--cert                    identify secure client using this TLS certificate file
+
+--endpoints=[127.0.0.1:2379] This is the default as ETCD is running on master node and exposed on localhost 2379.
+
+--key                  identify secure client using this TLS key file
+
+
+
+For a detailed explanation on how to make use of the etcdctl command line tool and work with the -h flags, check out the solution video for the Backup and Restore Lab.
+
+
+==============================================================================================================================================================================
+
+
+
+What is the version of ETCD running on the cluster?
+Check the ETCD Pod or Process
+Ans:  kubectl logs etcd-master -n kube-system
+      kubectl describe pod etcd-master -n kube-system
+
+At what address do you reach the ETCD cluster from your master node?
+Check the ETCD Service configuration in the ETCD POD
+Ans: 
+
+Where is the ETCD server certificate file located?
+Note this path down as you will need to use it later
+Ans: /etc/kubernetes/pki/etcd/server.key
+
+Where is the ETCD CA Certificate file located?
+Note this path down as you will need to use it la
+Ans: /etc/kubernetes/pki/etcd/ca.crt
+
+The master nodes in our cluster are planned for a regular maintenance reboot tonight. While we do not anticipate anything to go wrong, we are required to take the necessary backups. 
+Take a snapshot of the ETCD database using the built-in snapshot functionality.
+Store the backup file at location /tmp/snapshot-pre-boot.db
+Ans:
+ETCDCTL_API=3 etcdctl --endpoints=https://[127.0.0.1]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt 	
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/practice-questions-answers/cluster-maintenance/backup-etcd/etcd-backup-and-restore.md
+
+at 2am!
+Wake up! We have a conference call! After the reboot the master nodes came back online, but none of our applications are accessible. 
+Check the status of the applications on the cluster. What's wrong?
+Ans: deploymetns, services, pods are not present
+
+Luckily we took a backup. Restore the original state of the cluster using the backup file.
+Ans: 
+https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/practice-questions-answers/cluster-maintenance/backup-etcd/etcd-backup-and-restore.md
+and 
+cd /etc/kubernetes/manifests/
+vi etcd.yml
+
+--data-dir=/var/lib/etcd-from-backup
+--initial-cluster-token=etcd-cluster-1
+
+mountPath: /var/lib/etcd-from-backup
+
+

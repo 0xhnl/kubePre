@@ -1,0 +1,93 @@
+docker staorage
+-storage drivers
+-volumes drivers
+
+/var/lib/docker
+  /aufs
+  /containers
+  /image
+  /volumes
+
+docker volume create data_volume
+docker run -v data_volume:/var/lib/mysql mysql
+docker run --mount type=bind,source=/data/mysql,target=/var/lib/mysql mysql
+
+volumes drive can handle volumes only. not storage
+default is local
+-convoy, digital ocean block storage, flocker, gce-docker, glusterfs, netapp, rexray, portworx, vmware vsphere storage
+
+volumes driver
+-> docker run -it --name mysql --volume-driver rexray/ebs --mount src=sbs-vol,target=/var/lib/mysql mysql		//aaws
+
+=================================================
+
+container storage interfae
+container runtime interface(cri) - rkt, docker, cri-o
+container network interface(cni) - weaveworks,flannel, cilium
+container storage interface(csi) - portworx, amazon ebs, dell emc, glusterfs
+
+persistent volumes
+access mode - ReadOnlyMany, ReadWriteOnce, ReadWriteMany	
+example: 
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-voll
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  hostPath:
+    path: /tmp/data
+-> kubectl create -f pv-definition.yml
+-> kubectl get persistentvolume
+
+persistent volume claims
+- the administrator can create the pv 
+- the user can create pvc 
+- and bind this pv and pvc
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+
+-> kubectl get persistentvolumeclaim
+-> kubectl delete persistentvolumeclaim myclaim
+but it is still remain until the administrator is deleted
+
+'persistentVolumeReclaimPolicy: Retain' or Delete
+
+Configure a volume to store these logs at /var/log/webapp on the host
+Use the spec given on the right.
+Name: webapp
+Image Name: kodekloud/event-simulator
+Volume HostPath: /var/log/webapp
+Volume Mount: /log
+Ans: 
+apiVersion: v1kind: Podmetadata:
+  name: webapp
+spec:  containers:  - name: event-simulator
+    image: kodekloud/event-simulator
+    env:
+    - name: LOG_HANDLERS
+      value: file
+    volumeMounts:
+    - mountPath: /log
+      name: log-volume
+
+  volumes:
+  - name: log-volume
+    hostPath:
+      # directory location on host
+      path: /var/log/webapp
+      # this field is optional
+      type: Directory
+

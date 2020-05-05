@@ -1,0 +1,330 @@
+Rolling updates and rollbacck
+
+rollout and versioning
+revision1: nginx:1.7.0
+revision2: nginx:1.7.1
+
+rollout cmd
+-> kubectl rollout status deployment/myapp-deployment
+-> kubectl rollout history deployment/myapp-deployment
+
+two types of deployment strategies
+recreate - if you have five nginx instance. When update coming, delete the five instance and recreate five instance at same time. 
+rolling update - if you have five nginx instance. When update coming, delete one instance and recrete one instance, again and again. (default)
+
+-> kubectl apply -f deployment-definition-rollingout.yml	//first way
+-> kubectl set image deployment/app-deployment \
+   nginx=nginx:1.9.1						//second way
+
+recreate and rolling update
+-> kubectl describe deployment
+
+rollback
+-> kubectl rollout undo deployment/myapp-deployment
+-> kubectl get replicasets					//view the difference
+
+cmd
+Create - kubectl create -f deployment-defintion.yml
+Get    - kubectl get deployments
+Update - kubectl apply -f deployment-definition.yml
+       - kubectl set image deployment/myapp-deployment nginx=nginx:1.9.1
+Status - kubectl rollout status deployment/myapp-deployment
+       - kubectl rollout history deployment/myapp-deployment
+Rollback - kubectl rollout undo deployment/myapp-deployment
+
+===========================================================================================
+
+commands and arguments in docker
+
+simple dockerfile
+
+FROM Ubuntu
+CMD sleep 5				
+
+CMD command param1
+CMD ["command","param1']		//format json
+
+CMD sleep 5
+CMD ["sleep","5"]
+
+FROM Ubuntu
+CMD sleep 5
+-> docker run ubuntu-sleeper sleep 10
+
+FROM Ubuntu
+ENTRYPOINT ["sleep"]
+-> docker run ubuntu-sleeper 10
+
+FROM Ubuntu
+ENTRYPOINT["sleep"]
+CMD["5"]
+-> docker run ubuntu-sleeper 10
+
+->docker run --entrypoint sleep2.0 ubuntu-sleeper 10
+
+commands and arguments in kubernetes
+-> docker run --name ubuntu-sleeper ubuntu-sleeper
+-> docker run --name ubuntu-sleeper ubuntu-sleeper 10
+with pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper-pod
+spec:
+  containers:
+    - name: ubuntu-sleeper
+      image: ubuntu-sleeper
+      args: ["10"]
+
+-> docker run --name ubuntu-sleeper \
+    --entryponit sleep2.0
+    ubuntu-sleeper 10
+with pod-definition.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper-pod
+spec:
+  containers:
+    - name: ubuntu-sleeper
+      image: ubuntu-sleeper
+      command: ["sleep2.0"]
+      args: ["10"]
+
+Create a pod with the ubuntu image to run a container to sleep for 5000 seconds. Modify the file ubuntu-sleeper-2.yaml.
+Note: Only make the necessary changes. Do not modify the name.
+Ans: 
+
+=================================================================================
+
+env on kubernetes
+
+env:
+  - name: APP_COLOR
+    value: pink				//plain key value
+
+env:
+  - name: APP_COLOR
+    valueFrom: 				//config map
+      configMapKeyRef:
+
+env:
+  - name: APP_COLOR
+    valueFrom:				//secrets
+      secretKeyRef:
+
+
+configMap
+configMaps are used to pass configuration data in the form of key value pairs in kubernetes.
+when it pod is created inject the config map into the pod.
+so the key value pairs that are available as environment variables for the application hosted inside the container in the pod.
+two phases are involved in this configurations map.
+1. Created configMap
+2. Inject into the POD
+two way to create configMap such as impersive way(cmd) and declarative way(yml file)
+
+impersive
+-> kubectl create configmap <config-map-name> --from-literal=<key>=<value>	//format
+-> kubectl create cocnfigmap app-config --from-literal=APP_COLOR=blue		//single 
+-> kubectl create cocnfigmap app-config --from-literal=APP_COLOR=blue --from-literal=APP_MOD=prod	//multiple
+
+-> kubectl create configmap <config-name> --from-file=<path-to-file>
+-> kubectl create configmap app-config --from-file=app_config.properties
+-> kubectl get configmaps
+-> kubectl describe configmaps
+
+declerative
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_COLOR: blue
+  APP_MODE: prod
+
+app-config
+APP_COLOR: blue
+APP_MODE: prod
+
+mysql-config
+port: 3306
+max_allowed_packet: 128M
+
+redis-config
+port: 6379
+rdb-compression: yes
+
+
+configmap in pods
+envFrom:
+  - configMapRef:			//env
+      name: app-config
+
+envFrom:
+  - name: APP_COLOR
+    valueFrom:
+      configMapKeyRef:			//single env
+        name: app-config
+        key: APP_COLOR
+
+volumes:
+- name: app-config-volume
+  configMap:				//volume
+    name: app-config
+
+secret
+1. create the secret 
+2. inject into pods
+imperative
+-> kubectl create secret generic <secret-name> --from-literal=<key>=<value>			//format
+-> kubectl create secret generic app-secret --from-literal=DB_HOST=mysql \
+   --from-literal=DB_User=root \
+   --from-literal=DB_Password=passwd
+-> kubectl create secret generic \
+   app-secret --from-file=app_secret.properties			//with file
+-> kubectl get secrets
+-> kubectl describe secrets
+-> kubectl get secret app-secret -o yml				//out put with yml format
+
+
+declarative way
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_HOST: mysql
+  DB_User: root
+  DB_Password: passwrd
+
+secrets in pod
+envFrom:				//env
+  - secretRef:
+      name: app-config
+
+env:
+  - name: DB_Password
+    valueFrom:
+      secretKeyRef:
+        name: app-secret		//single env
+        key: DB_Password
+
+volumes:
+- name: app-secret-volume
+  secret:
+    secretName: app-secret		//volume
+-> ls /opt/app-secret-volumes
+
+Demo
+The reason the application is failed is because we have not created the secrets yet. Create a new Secret named 'db-secret' with the data given(on the right).
+You may follow any one of the methods discussed in lecture to create the secret.
+Ans: kubectl create secret generic db-secret --from-literal=DB_Host=sql01 --from-literal=DB_User=root --from-literal=DB_Password=password123
+
+Configure webapp-pod to load environment variables from the newly created secret.
+Delete and recreate the pod if required.
+Pod name: webapp-pod
+Image name: kodekloud/simple-webapp-mysql
+Env From: Secret=db-secret
+Ans: 
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    name: webapp-pod
+  name: webapp-pod
+  namespace: default
+spec:
+  containers:
+  - image: kodekloud/simple-webapp-mysql
+    imagePullPolicy: Always
+    name: webapp
+    envFrom:
+    - secretRef:
+        name: db-secret
+
+https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
+https://kubernetes.io/docs/concepts/configuration/secret/#risks
+
+=========================================================================================================
+
+Secrets are not encrypted, so it is not safer in that sense. However, some best practices around using secrets make it safer. As in best practices like:
+
+Not checking-in secret object definition files to source code repositories.
+Enabling Encryption at Rest for Secrets so they are stored encrypted in ETCD. 
+
+
+Also the way kubernetes handles secrets. Such as:
+
+A secret is only sent to a node if a pod on that node requires it.
+Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
+Once the Pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
+Read about the protections and risks of using secrets here
+
+
+
+Having said that, there are other better ways of handling sensitive data like passwords in Kubernetes, such as using tools like Helm Secrets, HashiCorp Vault. I hope to make a lecture on these in t
+
+====================================================================================================================
+
+
+kubernetes muti-containers pod
+
+design pattern
+
+sidecar - adapter - ambassador
+
+Edit the pod to add a sidecar container to send logs to ElasticSearch. Mount the log volume to the sidecar container..
+Only add a new container. Do not modify anything else. Use the spec on the right.
+Name: app
+Container Name: sidecar
+Container Image: kodekloud/filebeat-configured
+Volume Mount: log-volume
+Mount Path: /var/log/event-simulator/
+Existing Container Name: app
+Existing Container Image: kodekloud/event-simulator
+Ans: 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+  namespace: elastic-stack
+  labels:
+    name: app
+spec:
+  containers:
+  - name: app
+    image: kodekloud/event-simulator
+    volumeMounts:
+    - mountPath: /log
+      name: log-volume
+
+  - name: sidecar
+    image: kodekloud/filebeat-configured
+    volumeMounts:
+    - mountPath: /var/log/event-simulator/
+      name: log-volume
+
+  volumes:
+  - name: log-volume
+    hostPath:
+      # directory location on host
+      path: /var/log/webapp
+      # this field is optional
+      type: DirectoryOrCreate
+
+https://bit.ly/2EXYdHf
+
+===================================================	
+
+init containers
+https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+
+=====================================================
+
+
+
+
+
+	
+
